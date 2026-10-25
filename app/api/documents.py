@@ -2,6 +2,16 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
+import json
+from uuid import UUID
+
+from fastapi import HTTPException
+
+from app.services.pdf_service import UPLOAD_DIR
+from app.services.chunking_service import chunk_pages
+from app.services.embedding_service import generate_embeddings
+from app.core.config import settings
+
 from app.services.pdf_service import (
     MAX_PDF_SIZE,
     extract_pdf_pages,
@@ -10,7 +20,13 @@ from app.services.pdf_service import (
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-
+class ProcessDocumentResponse(BaseModel):
+    document_id: str
+    chunk_count: int
+    embedding_dimension: int
+    embedding_model: str
+    chunks_preview: list[dict]
+    
 class PageSummary(BaseModel):
     page_number: int
     character_count: int
