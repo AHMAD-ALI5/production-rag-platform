@@ -1,14 +1,14 @@
 
 from io import BytesIO
+import json
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
 from app.main import app
-import json
-from uuid import uuid4
-
 from app.services.chunking_service import chunk_pages
+
 client = TestClient(app)
 
 
@@ -45,9 +45,9 @@ def test_upload_rejects_invalid_pdf():
 
 
 def test_upload_accepts_blank_pdf_and_flags_ocr(tmp_path, monkeypatch):
-    import app.services.pdf_service as pdf_service
+    import app.api.documents as documents_api
 
-    monkeypatch.setattr(pdf_service, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(documents_api, "UPLOAD_DIR", tmp_path)
 
     response = client.post(
         "/documents/upload",
@@ -60,7 +60,16 @@ def test_upload_accepts_blank_pdf_and_flags_ocr(tmp_path, monkeypatch):
         },
     )
 
+    assert response.status_code == 200
 
+    data = response.json()
+
+    assert data["page_count"] == 1
+    assert data["needs_ocr"] is True
+    assert data["pages"][0]["page_number"] == 1
+
+    assert (tmp_path / f'{data["document_id"]}.pdf').exists()
+    assert (tmp_path / f'{data["document_id"]}.json').exists()
 
 
 def test_chunking_preserves_page_numbers():
@@ -79,7 +88,10 @@ def test_chunking_preserves_page_numbers():
     assert len(chunks) > 2
     assert {chunk["page_number"] for chunk in chunks} == {1, 2}
     assert all(chunk["text"].strip() for chunk in chunks)
-    assert all(chunk["document_id"] == "test-document" for chunk in chunks)
+    assert all(
+        chunk["document_id"] == "test-document"
+        for chunk in chunks
+    )
 
 
 def test_process_document_saves_embeddings(tmp_path, monkeypatch):
@@ -122,11 +134,15 @@ def test_process_document_saves_embeddings(tmp_path, monkeypatch):
         fake_embeddings,
     )
 
-    response = client.post(f"/documents/{document_id}/process")
+    response = client.post(
+        f"/documents/{document_id}/process"
+    )
 
     assert response.status_code == 200
 
     result = response.json()
+
+    assert result["document_id"] == document_id
     assert result["chunk_count"] > 0
     assert result["embedding_dimension"] == 384
 
@@ -137,7 +153,18 @@ def test_process_document_saves_embeddings(tmp_path, monkeypatch):
     )
 
     assert len(saved["chunks"]) == result["chunk_count"]
-    assert all(len(c["embedding"]) == 384 for c in saved["chunks"])
-    assert all(c["page_number"] in (1, 2) for c in saved["chunks"])
-    assert (tmp_path / f'{data["document_id"]}.pdf').exists()
-    assert (tmp_path / f'{data["document_id"]}.json').exists()
+
+    assert all(
+        len(chunk["embedding"]) == 384
+        for chunk in saved["chunks"]
+    )
+
+    assert all(
+        chunk["page_number"] in (1, 2)
+        for chunk in saved["chunks"]
+    )
+
+    assert all(
+        chunk["document_id"] == document_id
+        for chunk in saved["chunks"]
+    )
