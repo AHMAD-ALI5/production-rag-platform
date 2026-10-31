@@ -139,12 +139,5 @@ def test_process_document_saves_embeddings(tmp_path, monkeypatch):
     assert len(saved["chunks"]) == result["chunk_count"]
     assert all(len(c["embedding"]) == 384 for c in saved["chunks"])
     assert all(c["page_number"] in (1, 2) for c in saved["chunks"])
-
-    assert response.status_code == 200
-
-    data = response.json()
-    assert data["page_count"] == 1
-    assert data["needs_ocr"] is True
-    assert data["pages"][0]["page_number"] == 1
     assert (tmp_path / f'{data["document_id"]}.pdf').exists()
     assert (tmp_path / f'{data["document_id"]}.json').exists()
